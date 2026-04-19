@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoundMind - Generador de Frecuencias</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 400px;
+        }
+        h1 { text-align: center; color: var(--accent); font-size: 1.5rem; }
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        button {
+            background-color: var(--card-bg);
+            border: 1px solid #334155;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s;
+        }
+        button:active { transform: scale(0.98); background-color: #334155; }
+        button.active { border-color: var(--accent); box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+        .controls {
+            margin-top: 30px;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 15px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        label { display: block; margin-bottom: 10px; font-size: 0.9rem; opacity: 0.8; }
+        input[type="range"] { width: 100%; margin-bottom: 20px; accent-color: var(--accent); }
+        .status { text-align: center; margin-top: 10px; font-size: 0.8rem; color: var(--accent); min-height: 1em; }
+        .desc { font-size: 0.75rem; opacity: 0.6; display: block; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>SoundMind Lab</h1>
+    <p style="text-align: center; font-size: 0.9rem; opacity: 0.7;">Usa audífonos para el efecto binaural.</p>
+
+    <div class="preset-grid">
+        <button onclick="setPreset('morning')">
+            <strong>🌅 Inicio del Día (Alpha)</strong>
+            <span class="desc">Despierta la mente con calma (12Hz)</span>
+        </button>
+        <button onclick="setPreset('work')">
+            <strong>💻 Concentración (Beta)</strong>
+            <span class="desc">Deep work y análisis de datos (20Hz)</span>
+        </button>
+        <button onclick="setPreset('yoga')">
+            <strong>🧘 Yoga / Introspección (Theta)</strong>
+            <span class="desc">Conexión cuerpo y mente (6Hz)</span>
+        </button>
+        <button onclick="setPreset('exercise')">
+            <strong>⚡ Energía / Motivación (Gamma)</strong>
+            <span class="desc">Estado de alerta máximo (40Hz)</span>
+        </button>
+        <button onclick="setPreset('sleep')">
+            <strong>🌙 Sueño Profundo (Delta)</strong>
+            <span class="desc">Apagado de pensamientos (2Hz)</span>
+        </button>
+    </div>
+
+    <div class="controls">
+        <label>Volumen General</label>
+        <input type="range" id="masterVol" min="0" max="1" step="0.01" value="0.5">
+        
+        <label>Aislamiento (Ruido Marrón)</label>
+        <input type="range" id="noiseVol" min="0" max="0.3" step="0.01" value="0.1">
+        
+        <button id="mainToggle" onclick="toggleAudio()" style="width: 100%; text-align: center; background: var(--accent); color: var(--bg-color); font-weight: bold; border: none;">
+            INICIAR AUDIO
+        </button>
+    </div>
+
+    <div id="statusText" class="status"></div>
+</div>
+
+<script>
+    let audioCtx;
+    let oscL, oscR, gainL, gainR, masterGain, noiseNode;
+    let isPlaying = false;
+
+    function initAudio() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Master Gain
+        masterGain = audioCtx.createGain();
+        masterGain.connect(audioCtx.destination);
+        
+        // Brown Noise
+        const bufferSize = 2 * audioCtx.sampleRate,
+        noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate),
+        output = noiseBuffer.getChannelData(0);
+        let lastOut = 0;
+        for (let i = 0; i < bufferSize; i++) {
+            let white = Math.random() * 2 - 1;
+            output[i] = (lastOut + (0.02 * white)) / 1.02;
+            lastOut = output[i];
+            output[i] *= 3.5; // Ajuste de volumen
+        }
+        noiseNode = audioCtx.createBufferSource();
+        noiseNode.buffer = noiseBuffer;
+        noiseNode.loop = true;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = 0.1;
+        noiseNode.connect(noiseGain);
+        noiseGain.connect(masterGain);
+        
+        document.getElementById('noiseVol').oninput = (e) => noiseGain.gain.value = e.target.value;
+        document.getElementById('masterVol').oninput = (e) => masterGain.gain.value = e.target.value;
+    }
+
+    function toggleAudio() {
+        if (!audioCtx) initAudio();
+        
+        if (isPlaying) {
+            audioCtx.suspend();
+            document.getElementById('mainToggle').innerText = "REANUDAR";
+            isPlaying = false;
+        } else {
+            audioCtx.resume();
+            if (noiseNode.state !== 'running') noiseNode.start();
+            document.getElementById('mainToggle').innerText = "PAUSAR";
+            isPlaying = true;
+        }
+    }
+
+    function setPreset(type) {
+        if (!audioCtx) initAudio();
+        
+        // Limpiar osciladores previos
+        if (oscL) { oscL.stop(); oscR.stop(); }
+
+        let carrier = 200; // Frecuencia base cómoda
+        let beat = 10;
+        let label = "";
+
+        switch(type) {
+            case 'morning': beat = 12; carrier = 250; label = "Modo: Inicio del Día (Alpha)"; break;
+            case 'work': beat = 20; carrier = 300; label = "Modo: Concentración (Beta)"; break;
+            case 'yoga': beat = 6; carrier = 180; label = "Modo: Yoga (Theta)"; break;
+            case 'exercise': beat = 40; carrier = 400; label = "Modo: Energía (Gamma)"; break;
+            case 'sleep': beat = 2; carrier = 150; label = "Modo: Sueño (Delta)"; break;
+        }
+
+        oscL = audioCtx.createOscillator();
+        oscR = audioCtx.createOscillator();
+        const pannerL = audioCtx.createStereoPanner();
+        const pannerR = audioCtx.createStereoPanner();
+
+        oscL.frequency.value = carrier;
+        oscR.frequency.value = carrier + beat;
+
+        pannerL.pan.value = -1;
+        pannerR.pan.value = 1;
+
+        oscL.connect(pannerL).connect(masterGain);
+        oscR.connect(pannerR).connect(masterGain);
+
+        oscL.start();
+        oscR.start();
+        
+        document.getElementById('statusText').innerText = label;
+        
+        // Marcar botón activo
+        document.querySelectorAll('.preset-grid button').forEach(btn => btn.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        
+        if (!isPlaying) toggleAudio();
+    }
+</script>
+
+</body>
+</html>
